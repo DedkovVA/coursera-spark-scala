@@ -29,8 +29,8 @@ object WikipediaRanking {
    *  Hint1: consider using method `aggregate` on RDD[T].
    *  Hint2: consider using method `mentionsLanguage` on `WikipediaArticle`
    */
-  def occurrencesOfLang(lang: String, rdd: RDD[WikipediaArticle]): Int = rdd.filter(a => a.mentionsLanguage(lang)).
-    aggregate(0)((sum, _) => sum + 1, _ + _)
+  def occurrencesOfLang(lang: String, rdd: RDD[WikipediaArticle]): Int = rdd.filter(_.mentionsLanguage(lang))
+    .aggregate(0)((sum, _) => sum + 1, _ + _)
 
   private def toResult(x: RDD[(String, Int)]) = x.collect().toList.sortBy(_._2)(Ordering[Int].reverse)
 
@@ -43,8 +43,8 @@ object WikipediaRanking {
    *   several seconds.
    */
   def rankLangs(langs: List[String], rdd: RDD[WikipediaArticle]): List[(String, Int)] =
-    toResult { rdd.flatMap(a => langs.filter(a.mentionsLanguage).map((_, 1))).groupByKey().
-      map(p => (p._1, p._2.aggregate(0)((sum, _) => sum + 1, _ + _)))
+    toResult { rdd.flatMap(a => langs.filter(a.mentionsLanguage).map((_, 1))).groupByKey()
+      .map(p => (p._1, p._2.aggregate(0)((sum, _) => sum + 1, _ + _)))
     }
 
   /* Compute an inverted index of the set of articles, mapping each language

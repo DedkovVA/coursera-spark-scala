@@ -2,12 +2,9 @@ package stackoverflow
 
 import org.apache.spark.SparkConf
 import org.apache.spark.SparkContext
-import org.apache.spark.SparkContext._
 import org.apache.spark.rdd.RDD
-import org.apache.spark.storage.StorageLevel
 
 import annotation.tailrec
-import scala.reflect.ClassTag
 
 /** A raw stackoverflow posting, either a question or an answer */
 case class Posting(postingType: Int, id: Int, acceptedAnswer: Option[Int], parentId: Option[Int], score: Int, tags: Option[String]) extends Serializable
@@ -80,19 +77,10 @@ class StackOverflow extends Serializable {
 
   /** Group the questions and answers together */
   def groupedPostings(postings: RDD[Posting]): RDD[(Int, Iterable[(Posting, Posting)])] = {
-//    val v1: RDD[(Int, Iterable[Posting])] = postings.groupBy(e => e.postingType).cache()
-//    def f1(postType: Int) = v1.filter(_._1 == postType).flatMap(e => e._2)
-//    val qs: RDD[(Int, Posting)] = f1(1).map(e => (e.id, e))
-//    val answs: RDD[(Int, Iterable[Posting])] = f1(2).map(e => (e.parentId.get, e)).groupByKey()
-    val qs = postings.filter(_.postingType == 1).map(e => (e.id, e))
-    val answs = postings.filter(_.postingType == 2).map(e => (e.parentId.get, e)).groupByKey()
-    val joined: RDD[(Int, (Posting, Iterable[Posting]))] = qs.join(answs)
+    val questions = postings.filter(_.postingType == 1).map(e => (e.id, e))
+    val answers = postings.filter(_.postingType == 2).map(e => (e.parentId.get, e)).groupByKey()
+    val joined: RDD[(Int, (Posting, Iterable[Posting]))] = questions.join(answers)
     joined.map(e => (e._1, e._2._2.map(e0 => (e._2._1, e0))))
-//    val joined: RDD[(Int, (Posting, Posting))] = qs.join(answs)
-//    joined.groupByKey()
-    //    val answs: RDD[(Int, Posting)] = f1(2).map(e => (e.parentId.get, e))
-//    val joined: RDD[(Int, (Posting, Posting))] = qs.join(answs)
-//    joined.groupByKey()
   }
 
 
@@ -188,16 +176,11 @@ class StackOverflow extends Serializable {
   /** Main kmeans computation */
   @tailrec final def kmeans(means: Array[(Int, Int)], vectors: RDD[(Int, Int)], iter: Int = 1, debug: Boolean = false): Array[(Int, Int)] = {
     val vectorsWithClosest: RDD[(Int, (Int, Int))] = vectors.map(e => (findClosest(e, means), e))
-//    val clusters: RDD[(Int, Iterable[(Int, Int)])] = vectorsWithClosest.groupByKey()
     val clusters: RDD[(Int, Iterable[(Int, (Int, Int))])] = vectorsWithClosest.groupBy(_._1)
     val newMeansValues: RDD[(Int, (Int, Int))] = clusters.map(e => (e._1, averageVectors(e._2.map(_._2))))
     val newMeans0: Array[(Int, (Int, Int))] = newMeansValues.collect()
     val newMeans = newMeans0.union(means.indices.toList.diff(newMeans0.map(_._1)).
       map(i => (i, means(i))).toArray[(Int, (Int, Int))]).sortBy(_._1).map(_._2)
-
-//    val newMeans = means.clone() // you need to compute newMeans
-
-    // TODO: Fill in the newMeans array
 
     val distance = euclideanDistance(means, newMeans)
 
@@ -302,7 +285,7 @@ class StackOverflow extends Serializable {
       val ind = statsMostPopular._1 / langSpread
       val langLabel: String   = langs(ind) // most common language in the cluster
       val clusterSize: Int    = vs.size
-      val langPercent: Double = (statsMostPopular._2.toDouble / clusterSize/*stats.values.sum*/) * 100 // percent of the questions in the most common language
+      val langPercent: Double = (statsMostPopular._2.toDouble / clusterSize) * 100 // percent of the questions in the most common language
       val medianScore: Int    = {
         val scores = vs.map(_._2).toList.sorted
         val size = scores.size
