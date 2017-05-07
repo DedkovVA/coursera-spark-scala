@@ -105,9 +105,13 @@ object TimeUsage {
     val working = List("t05", "t1805")
     val leisure = List("t02", "t04", "t06", "t07", "t08", "t09", "t10", "t12", "t13", "t14", "t15", "t16", "t18")
 
-    val p1 = columnNames.partition(e => primaryNeeds.exists(e0 => e.startsWith(e0)))
-    val p2 = p1._2.partition(e => working.exists(e0 => e.startsWith(e0)))
-    val p3 = p2._2.filter(e => leisure.exists(e0 => e.startsWith(e0)))
+    def partitionF(columnNames: List[String]) = {
+      columnName: String => columnNames.exists(e0 => columnName.startsWith(e0))
+    }
+
+    val p1 = columnNames.partition(partitionF(primaryNeeds))
+    val p2 = p1._2.partition(partitionF(working))
+    val p3 = p2._2.filter(partitionF(leisure))
 
     (p1._1.map(e => col(e)), p2._1.map(e => col(e)), p3.map(e => col(e)))
   }
@@ -154,9 +158,13 @@ object TimeUsage {
       when(col("teage") >= 23 && col("teage") <= 55, "active").otherwise("elder")
     )
 
-    val primaryNeedsProjection: Column = primaryNeedsColumns.foldLeft(lit(0.0))((sum, c) => c + lit(sum)) / lit(60)
-    val workProjection: Column = workColumns.foldLeft(lit(0.0))((sum, c) => c + lit(sum)) / lit(60)
-    val otherProjection: Column = otherColumns.foldLeft(lit(0.0))((sum, c) => c + lit(sum)) / lit(60)
+    def projection(columns: List[Column]) = {
+      columns.foldLeft(lit(0.0))((sum, c) => c + lit(sum)) / lit(60)
+    }
+
+    val primaryNeedsProjection: Column = projection(primaryNeedsColumns)
+    val workProjection: Column = projection(workColumns)
+    val otherProjection: Column = projection(otherColumns)
     df
       .select(
         workingStatusProjection.as("working"),
@@ -251,7 +259,6 @@ object TimeUsage {
     * Hint: you should use the `groupByKey` and `typed.avg` methods.
     */
   def timeUsageGroupedTyped(summed: Dataset[TimeUsageRow]): Dataset[TimeUsageRow] = {
-    import org.apache.spark.sql.expressions.scalalang.typed
     summed.groupByKey(r => (r.working, r.sex, r.age)).agg(
       round(avg(col("primaryNeeds")), 1).as[Double],
       round(avg(col("work")), 1).as[Double],
